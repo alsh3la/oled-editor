@@ -19,7 +19,7 @@ dependencies:
 
   # --- NEW: Modern UI & Editor Tools ---
   google_fonts: ^6.1.0        # For the JetBrains Mono & Inter fonts
-  code_text_field: ^2.4.0     # For the code editor with line numbers
+  code_text_field:     # For the code editor with line numbers
   highlight: ^0.7.0           # For syntax highlighting (colors)
   device_preview: ^1.1.0      # For previewing on different screen sizes
 
