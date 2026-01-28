@@ -16,14 +16,14 @@ dependencies:
   path_provider: ^2.1.1
   share_plus: ^7.2.1
   
-  # --- The Fix: Allow newer version ---
-  intl: ^0.20.0  
+  # --- The Fix: No version numbers (Auto-Resolve) ---
+  intl: 
+  device_preview: 
+  code_text_field: 
 
-  # --- Modern UI & Editor Tools ---
+  # --- Modern UI ---
   google_fonts: ^6.1.0
-  code_text_field: ^2.5.0
   highlight: ^0.7.0
-  device_preview: ^1.1.0
 
 dev_dependencies:
   flutter_test:
