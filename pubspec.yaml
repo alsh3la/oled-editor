@@ -1,34 +1,27 @@
 name: oled_editor
-description: A modern OLED HTML Editor.
+description: A new Flutter project.
 publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'
+  sdk: '>=3.2.0 <4.0.0'
 
 dependencies:
   flutter:
     sdk: flutter
 
-  # --- Core Plugins ---
+  # Core Features
   webview_flutter: ^4.4.2
   file_picker: ^6.1.1
   path_provider: ^2.1.1
   share_plus: ^7.2.1
   
-  # --- The Fix: No version numbers (Auto-Resolve) ---
-  intl: 
-  device_preview: 
-  code_text_field: 
-
-  # --- Modern UI ---
+  # UI & Editor
   google_fonts: ^6.1.0
   highlight: ^0.7.0
+  code_text_field: ^2.3.0
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^2.0.0
-
-flutter:
-  uses-material-design: true
+# 🛡️ THE FIX: FORCE COMPATIBILITY
+dependency_overrides:
+  intl: ^0.19.0
+  web: ^0.5.0
