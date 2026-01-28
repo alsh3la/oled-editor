@@ -1,26 +1,17 @@
 import 'dart:io';
-import 'dart:ui'; // For blur effect
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:device_preview/device_preview.dart';
 import 'package:flutter/foundation.dart';
 import 'package:google_fonts/google_fonts.dart';
-
-// SYNTAX HIGHLIGHTING
 import 'package:code_text_field/code_text_field.dart';
 import 'package:highlight/languages/xml.dart';
-import 'package:highlight/languages/javascript.dart';
 import 'package:flutter_highlight/themes/monokai-sublime.dart';
 
 void main() {
-  runApp(
-    DevicePreview(
-      enabled: !kReleaseMode,
-      builder: (context) => const ProEditorApp(),
-    ),
-  );
+  runApp(const ProEditorApp());
 }
 
 class ProEditorApp extends StatelessWidget {
@@ -29,18 +20,14 @@ class ProEditorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      useInheritedMediaQuery: true,
-      locale: DevicePreview.locale(context),
-      builder: DevicePreview.appBuilder,
       debugShowCheckedModeBanner: false,
       title: 'OLED Pro',
       theme: ThemeData.dark().copyWith(
-        scaffoldBackgroundColor: const Color(0xFF1E1E1E), // VS Code Dark Grey
+        scaffoldBackgroundColor: const Color(0xFF1E1E1E),
         textTheme: GoogleFonts.interTextTheme(ThemeData.dark().textTheme),
         appBarTheme: const AppBarTheme(
           backgroundColor: Color(0xFF1E1E1E),
           elevation: 0,
-          titleTextStyle: TextStyle(fontWeight: FontWeight.bold, fontSize: 18),
         ),
       ),
       home: const EditorHome(),
@@ -66,8 +53,8 @@ class _EditorHomeState extends State<EditorHome> {
   List<FileSystemEntity> _files = [];
 
   // Theme Colors
-  final Color _accentColor = const Color(0xFF00FF9D); // Neon Green
-  final Color _bgDark = const Color(0xFF121212); // True Black
+  final Color _accentColor = const Color(0xFF00FF9D);
+  final Color _bgDark = const Color(0xFF121212);
 
   @override
   void initState() {
@@ -89,17 +76,15 @@ class _EditorHomeState extends State<EditorHome> {
       ..loadHtmlString(_codeCtrl.text);
   }
 
-  // --- SEARCH LOGIC ---
   void _performSearch(String query) {
     if (query.isEmpty) return;
     final text = _codeCtrl.text;
-    final index = text.indexOf(query, _codeCtrl.selection.end); // Find next
+    final index = text.indexOf(query, _codeCtrl.selection.end);
 
     if (index != -1) {
       _codeCtrl.selection =
           TextSelection(baseOffset: index, extentOffset: index + query.length);
     } else {
-      // Loop back to start
       final resetIndex = text.indexOf(query);
       if (resetIndex != -1) {
         _codeCtrl.selection = TextSelection(
@@ -108,9 +93,7 @@ class _EditorHomeState extends State<EditorHome> {
     }
   }
 
-  // --- FILE SYSTEM ---
   Future<void> _refreshFileList() async {
-    if (kIsWeb) return;
     final dir = await getApplicationDocumentsDirectory();
     setState(() {
       _files = dir.listSync().where((e) => e.path.endsWith('.html')).toList();
@@ -118,7 +101,6 @@ class _EditorHomeState extends State<EditorHome> {
   }
 
   Future<void> _saveInternal() async {
-    if (kIsWeb) return;
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$_currentFileName');
     await file.writeAsString(_codeCtrl.text);
@@ -126,7 +108,6 @@ class _EditorHomeState extends State<EditorHome> {
   }
 
   Future<void> _exportAsHtml() async {
-    if (kIsWeb) return;
     final dir = await getApplicationDocumentsDirectory();
     final file = File('${dir.path}/$_currentFileName');
     await file.writeAsString(_codeCtrl.text);
@@ -135,11 +116,10 @@ class _EditorHomeState extends State<EditorHome> {
         sharePositionOrigin: box!.localToGlobal(Offset.zero) & box.size);
   }
 
-  // --- UI CONSTRUCTION ---
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      extendBodyBehindAppBar: true, // For modern feel
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
         flexibleSpace: ClipRect(
           child: BackdropFilter(
@@ -179,7 +159,6 @@ class _EditorHomeState extends State<EditorHome> {
       body: SafeArea(
         child: Column(
           children: [
-            // SEARCH BAR WIDGET (Appears when toggled)
             if (_showSearchBar)
               Container(
                 color: const Color(0xFF252526),
@@ -209,8 +188,6 @@ class _EditorHomeState extends State<EditorHome> {
                   ],
                 ),
               ),
-
-            // MAIN EDITOR AREA
             Expanded(
               child: _showPreview
                   ? WebViewWidget(controller: _webCtrl)
@@ -239,14 +216,12 @@ class _EditorHomeState extends State<EditorHome> {
     );
   }
 
-  // --- MODERN SIDEBAR DESIGN ---
   Widget _buildModernDrawer() {
     return Drawer(
       backgroundColor: _bgDark,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header
           Container(
             padding: const EdgeInsets.only(top: 60, bottom: 20, left: 20),
             width: double.infinity,
@@ -275,79 +250,38 @@ class _EditorHomeState extends State<EditorHome> {
               ],
             ),
           ),
-
-          // File List Header
-          Padding(
-            padding: const EdgeInsets.all(20),
-            child: Text("EXPLORER",
-                style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    letterSpacing: 1.5)),
-          ),
-
-          // File List
           Expanded(
             child: ListView(
               padding: EdgeInsets.zero,
               children: [
-                if (_files.isEmpty)
-                  Padding(
-                      padding: const EdgeInsets.only(left: 20),
-                      child: Text("No files yet.",
-                          style: TextStyle(color: Colors.white30))),
                 ..._files.map((f) {
                   final name = f.uri.pathSegments.last;
-                  final isSelected = name == _currentFileName;
-                  return Container(
-                    margin:
-                        const EdgeInsets.symmetric(horizontal: 10, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? _accentColor.withOpacity(0.1)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: isSelected
-                          ? Border.all(color: _accentColor.withOpacity(0.3))
-                          : null,
-                    ),
-                    child: ListTile(
-                      dense: true,
-                      leading: Icon(Icons.html,
-                          color: isSelected ? _accentColor : Colors.grey),
-                      title: Text(name,
-                          style: TextStyle(
-                              color: isSelected ? Colors.white : Colors.grey)),
-                      onTap: () async {
-                        _codeCtrl.text = await (f as File).readAsString();
-                        setState(() => _currentFileName = name);
-                        Navigator.pop(context);
-                      },
-                    ),
+                  return ListTile(
+                    dense: true,
+                    leading: Icon(Icons.html,
+                        color: name == _currentFileName
+                            ? _accentColor
+                            : Colors.grey),
+                    title: Text(name,
+                        style: TextStyle(
+                            color: name == _currentFileName
+                                ? Colors.white
+                                : Colors.grey)),
+                    onTap: () async {
+                      _codeCtrl.text = await (f as File).readAsString();
+                      setState(() => _currentFileName = name);
+                      Navigator.pop(context);
+                    },
                   );
                 }),
               ],
             ),
           ),
-
-          // Bottom Actions
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-                border: Border(
-                    top: BorderSide(color: Colors.white.withOpacity(0.1)))),
-            child: Column(
-              children: [
-                ListTile(
-                  leading:
-                      const Icon(Icons.ios_share, color: Colors.blueAccent),
-                  title: const Text("Export Project",
-                      style: TextStyle(color: Colors.white)),
-                  onTap: _exportAsHtml,
-                ),
-              ],
-            ),
+          ListTile(
+            leading: const Icon(Icons.ios_share, color: Colors.blueAccent),
+            title: const Text("Export Project",
+                style: TextStyle(color: Colors.white)),
+            onTap: _exportAsHtml,
           ),
         ],
       ),
