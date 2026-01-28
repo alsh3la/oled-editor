@@ -10,18 +10,20 @@ dependencies:
   flutter:
     sdk: flutter
 
-  # --- Core Plugins (Your existing ones) ---
+  # --- Core Plugins ---
   webview_flutter: ^4.4.2
   file_picker: ^6.1.1
   path_provider: ^2.1.1
   share_plus: ^7.2.1
-  intl: ^0.19.0
+  
+  # --- The Fix: Allow newer version ---
+  intl: ^0.20.0  
 
-  # --- NEW: Modern UI & Editor Tools ---
-  google_fonts: ^6.1.0        # For the JetBrains Mono & Inter fonts
-  code_text_field:     # For the code editor with line numbers
-  highlight: ^0.7.0           # For syntax highlighting (colors)
-  device_preview: ^1.1.0      # For previewing on different screen sizes
+  # --- Modern UI & Editor Tools ---
+  google_fonts: ^6.1.0
+  code_text_field: ^2.5.0
+  highlight: ^0.7.0
+  device_preview: ^1.1.0
 
 dev_dependencies:
   flutter_test:
