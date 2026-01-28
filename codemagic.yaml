@@ -6,42 +6,41 @@ workflows:
       flutter: stable
       xcode: latest
     scripts:
-      - name: 🛠️ Generate iOS Project
+      - name: 🧹 Clean Windows Corruption
         script: |
-          # 1. Force Flutter to create the missing ios folder
+          # Delete the corrupted Windows-generated folder
+          rm -rf ios
+          
+          # Regenerate fresh iOS files on the Mac
           flutter config --enable-ios
           flutter create . --platforms=ios
           
       - name: 🎨 Apply OLED Settings
         script: |
-          # 2. Modify the Info.plist for True Black & Permissions
           PLIST="ios/Runner/Info.plist"
-          
-          # Allow HTML content
+          # Allow HTML & Hide Status Bar
           plutil -replace NSAppTransportSecurity -xml "<dict><key>NSAllowsArbitraryLoads</key><true/></dict>" $PLIST
-          # Hide Status Bar
           plutil -replace UIStatusBarHidden -bool YES $PLIST
           plutil -replace UIViewControllerBasedStatusBarAppearance -bool NO $PLIST
-          # Enable File Sharing
           plutil -replace UIFileSharingEnabled -bool YES $PLIST
           plutil -replace LSSupportsOpeningDocumentsInPlace -bool YES $PLIST
-          
+
       - name: 📦 Install Pods
         script: |
-          # 3. Install iOS dependencies manually
+          # Install dependencies manually
           cd ios
           pod install
           cd ..
 
       - name: 🚀 Build IPA
         script: |
-          # 4. Build the app (Unsigned)
+          # Build the app (Unsigned)
           flutter build ios --release --no-codesign
           
-          # 5. Package it for AltStore
+          # Package the result
           mkdir Payload
           mv build/ios/iphoneos/Runner.app Payload/
           zip -r OLED_Editor.ipa Payload
 
     artifacts:
-      - "*.ipa"  # Save the file so you can download it
+      - "*.ipa"
