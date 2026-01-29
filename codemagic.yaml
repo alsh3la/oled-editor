@@ -6,46 +6,39 @@ workflows:
       flutter: stable
       xcode: latest
     scripts:
-      - name: Build
+      - name: Build IPA
         script: |
-          # Fix dependency
+          # Fix the dependency
           sed -i.bak 's/code_text_field: ^2.3.0/code_text_field: ^1.1.0/g' pubspec.yaml
           
           # Get packages
           flutter pub get
           
-          # Fix deployment target
+          # Install pods with fixed deployment target
           cd ios
-          cat > Podfile << 'EOF'
-platform :ios, '13.0'
-use_frameworks!
-install! 'cocoapods', :warn_for_unused_master_specs_repo => false
-
-post_install do |installer|
-  installer.pods_project.targets.each do |target|
-    target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-    end
-  end
-end
-
-target 'Runner' do
-  use_frameworks!
-  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-end
-EOF
           
+          # Update Podfile first line to fix deployment target
+          if grep -q "^platform :ios" Podfile; then
+            sed -i.bak 's/^platform :ios.*/platform :ios, "13.0"/' Podfile
+          else
+            sed -i.bak '1s/^/platform :ios, "13.0"\
+/' Podfile
+          fi
+          
+          # Install pods
           pod install
           cd ..
           
-          # Build
+          # Build the app
           flutter build ios --release --no-codesign
           
           # Create IPA
           cd build/ios/iphoneos
           mkdir Payload
-          mv Runner.app Payload/
-          zip -r OLED_Editor.ipa Payload
+          cp -r Runner.app Payload/
+          zip -r app.ipa Payload
+          
+          echo "✅ IPA created successfully"
           
     artifacts:
-      - "build/ios/iphoneos/OLED_Editor.ipa"
+      - "build/ios/iphoneos/app.ipa"
