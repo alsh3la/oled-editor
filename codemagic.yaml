@@ -1,37 +1,67 @@
 workflows:
   ios-unsigned:
     name: Unsigned iOS Build (AltStore)
-    max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
-      cocoapods: default
     scripts:
-      - name: Get Flutter packages
+      - name: Resolve dependencies smartly
         script: |
-          flutter packages pub get
-
-      - name: Install CocoaPods
+          set -e
+          
+          echo "🔍 Analyzing dependencies..."
+          
+          # Function to get latest available version
+          get_latest_version() {
+            local package=$1
+            local url="https://pub.dev/api/packages/$package"
+            local version=$(curl -s "$url" | grep -o '"latest"[^}]*' | grep -o '"version":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
+            echo "$version"
+          }
+          
+          # Backup pubspec
+          cp pubspec.yaml pubspec.yaml.bak
+          
+          # Get actual latest version of code_text_field
+          LATEST_VERSION=$(get_latest_version "code_text_field")
+          echo "📦 Latest available version of code_text_field: $LATEST_VERSION"
+          
+          if [ -z "$LATEST_VERSION" ]; then
+            echo "⚠️ Could not fetch version, using fallback ^1.1.0"
+            LATEST_VERSION="^1.1.0"
+          fi
+          
+          # Update pubspec with correct version
+          if [[ "$LATEST_VERSION" == 2.* ]]; then
+            # Version 2.x exists, use it
+            sed -i '' "s/code_text_field: \^2.3.0/code_text_field: $LATEST_VERSION/" pubspec.yaml
+          else
+            # Version 2.x doesn't exist, use latest available
+            echo "📝 Version 2.3.0 not available, using $LATEST_VERSION instead"
+            sed -i '' "s/code_text_field: \^2.3.0/code_text_field: $LATEST_VERSION/" pubspec.yaml
+          fi
+          
+          echo "📄 Updated dependency in pubspec.yaml"
+          grep "code_text_field" pubspec.yaml
+          
+          # Get packages
+          echo "🔄 Getting Flutter packages..."
+          flutter pub get
+          
+          # Verify
+          echo "✅ Dependencies resolved successfully"
+          
+      - name: Build app
         script: |
-          find . -name "Podfile" -exec dir dirname {} \; | xargs -n1 -I % sh -c 'cd %; pod install'
-
-      - name: Build Flutter App (No Signing)
-        script: |
-          # Build the .app bundle without asking for code signing identities
+          flutter clean
           flutter build ios --release --no-codesign
-
-      - name: Package .app into .ipa
+          
+      - name: Package IPA
         script: |
-          # Go to the build output directory
           cd build/ios/iphoneos
-          
-          # Create the required "Payload" folder structure for an IPA
-          mkdir Payload
+          mkdir -p Payload
           mv Runner.app Payload
+          zip -r "app_$(date +%Y%m%d_%H%M%S).ipa" Payload
           
-          # Zip it up into an IPA file
-          zip -r -9 runner.ipa Payload
-
     artifacts:
-      - build/ios/iphoneos/*.ipa  # Save the file we just zipped
-      - flutter_drive.log
+      - build/ios/iphoneos/*.ipa
