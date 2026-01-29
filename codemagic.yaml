@@ -5,63 +5,29 @@ workflows:
       flutter: stable
       xcode: latest
     scripts:
-      - name: Resolve dependencies smartly
+      - name: Fix and Build
         script: |
           set -e
           
-          echo "🔍 Analyzing dependencies..."
+          echo "🔄 Fixing dependency version..."
           
-          # Function to get latest available version
-          get_latest_version() {
-            local package=$1
-            local url="https://pub.dev/api/packages/$package"
-            local version=$(curl -s "$url" | grep -o '"latest"[^}]*' | grep -o '"version":"[^"]*"' | cut -d'"' -f4 2>/dev/null || echo "")
-            echo "$version"
-          }
+          # Simple fix - directly update the version
+          # The error says 2.3.0 doesn't exist, and suggests 1.1.0
+          sed -i.bak 's|code_text_field: \^2\.3\.0|code_text_field: ^1.1.0|g' pubspec.yaml
           
-          # Backup pubspec
-          cp pubspec.yaml pubspec.yaml.bak
-          
-          # Get actual latest version of code_text_field
-          LATEST_VERSION=$(get_latest_version "code_text_field")
-          echo "📦 Latest available version of code_text_field: $LATEST_VERSION"
-          
-          if [ -z "$LATEST_VERSION" ]; then
-            echo "⚠️ Could not fetch version, using fallback ^1.1.0"
-            LATEST_VERSION="^1.1.0"
-          fi
-          
-          # Update pubspec with correct version
-          if [[ "$LATEST_VERSION" == 2.* ]]; then
-            # Version 2.x exists, use it
-            sed -i '' "s/code_text_field: \^2.3.0/code_text_field: $LATEST_VERSION/" pubspec.yaml
-          else
-            # Version 2.x doesn't exist, use latest available
-            echo "📝 Version 2.3.0 not available, using $LATEST_VERSION instead"
-            sed -i '' "s/code_text_field: \^2.3.0/code_text_field: $LATEST_VERSION/" pubspec.yaml
-          fi
-          
-          echo "📄 Updated dependency in pubspec.yaml"
-          grep "code_text_field" pubspec.yaml
-          
-          # Get packages
-          echo "🔄 Getting Flutter packages..."
+          echo "📦 Getting packages..."
           flutter pub get
           
-          # Verify
-          echo "✅ Dependencies resolved successfully"
-          
-      - name: Build app
-        script: |
-          flutter clean
+          echo "🏗️ Building iOS app..."
           flutter build ios --release --no-codesign
           
-      - name: Package IPA
-        script: |
+          echo "📦 Packaging IPA..."
           cd build/ios/iphoneos
           mkdir -p Payload
           mv Runner.app Payload
-          zip -r "app_$(date +%Y%m%d_%H%M%S).ipa" Payload
+          zip -qr app.ipa Payload
+          
+          echo "✅ Build completed successfully!"
           
     artifacts:
       - build/ios/iphoneos/*.ipa
