@@ -1,173 +1,51 @@
 workflows:
-  ios-altstore-fixed-deployment:
-    name: Fix Deployment Target
+  ios-build:
+    name: Build IPA
     instance_type: mac_mini_m1
     environment:
       flutter: stable
       xcode: latest
     scripts:
-      - name: Fix All Issues
+      - name: Build
         script: |
-          echo "🔧 Fixing deployment target and other issues..."
+          # Fix dependency
+          sed -i.bak 's/code_text_field: ^2.3.0/code_text_field: ^1.1.0/g' pubspec.yaml
           
-          # 1. Fix code_text_field dependency
-          sed -i '' 's/code_text_field: ^2.3.0/code_text_field: ^1.1.0/g' pubspec.yaml
-          
-          # 2. Get packages
+          # Get packages
           flutter pub get
           
-          # 3. FIX DEPLOYMENT TARGET IN PODFILE
-          echo "📝 Fixing Podfile deployment target..."
-          
-          # Ensure iOS folder exists
-          if [ ! -d "ios" ]; then
-            flutter create . --platforms=ios --org com.example.oled
-          fi
-          
-          # Update Podfile with correct deployment target
-          cat > ios/Podfile << 'PODFILE'
-# Fix deployment target warnings
+          # Fix deployment target
+          cd ios
+          cat > Podfile << 'EOF'
 platform :ios, '13.0'
 use_frameworks!
 install! 'cocoapods', :warn_for_unused_master_specs_repo => false
 
-# Override post_install to set deployment targets
 post_install do |installer|
   installer.pods_project.targets.each do |target|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
-      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
-      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
     end
   end
 end
 
 target 'Runner' do
   use_frameworks!
-  
-  # Flutter Pods
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
-  
-  # Add any other pods here
-  
 end
-PODFILE
+EOF
           
-          # 4. FIX IOS PROJECT DEPLOYMENT TARGET
-          echo "⚙️ Fixing iOS project settings..."
-          cd ios
-          
-          # Update Xcode project deployment target
-          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:IPHONEOS_DEPLOYMENT_TARGET 13.0" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          
-          # Disable signing
-          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:CODE_SIGN_STYLE Manual" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:CODE_SIGN_IDENTITY ''" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
-          
-          # Create xcconfig files
-          cat > Flutter/Release.xcconfig << 'XCCONFIG'
-#include "Generated.xcconfig"
-#include? "Pods-Runner.release.xcconfig"
-CODE_SIGN_IDENTITY=
-CODE_SIGNING_REQUIRED=NO
-CODE_SIGNING_ALLOWED=NO
-DEVELOPMENT_TEAM=
-PROVISIONING_PROFILE_SPECIFIER=
-IPHONEOS_DEPLOYMENT_TARGET=13.0
-XCCONFIG
-          
+          pod install
           cd ..
-          
-      - name: Install Pods with Fix
-        script: |
-          echo "☕️ Installing pods with fixed deployment target..."
-          cd ios
-          
-          # Clean pod cache
-          pod cache clean --all 2>/dev/null || true
-          rm -rf Pods Podfile.lock 2>/dev/null || true
-          
-          # Install pods
-          pod install --repo-update 2>&1 | tee pod_install.log | tail -50
-          
-          cd ..
-          
-      - name: Build with Fixed Target
-        script: |
-          echo "🏗️ Building with fixed deployment target..."
-          
-          # Clean
-          flutter clean
           
           # Build
-          flutter build ios --release --no-codesign --verbose 2>&1 | tee build.log | tail -100
-          
-          # Check for specific error
-          if grep -q "BUILD FAILED" build.log; then
-            echo "❌ Build failed, trying xcodebuild directly..."
-          else
-            echo "✅ Flutter build completed"
-          fi
-          
-      - name: Direct xcodebuild with Fix
-        script: |
-          echo "🔨 Building directly with xcodebuild..."
-          cd ios
-          
-          # Clean
-          xcodebuild clean \
-            -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release 2>&1 | tail -10
-          
-          # Build with all fixes
-          xcodebuild build \
-            -workspace Runner.xcworkspace \
-            -scheme Runner \
-            -configuration Release \
-            -destination 'generic/platform=iOS' \
-            CODE_SIGN_IDENTITY="" \
-            CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO \
-            DEVELOPMENT_TEAM="" \
-            PROVISIONING_PROFILE_SPECIFIER="" \
-            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
-            ONLY_ACTIVE_ARCH=NO \
-            VALID_ARCHS="arm64 arm64e" 2>&1 | tee xcode_build.log | tail -100
-          
-          cd ..
-          
-      - name: Create IPA
-        script: |
-          echo "📦 Creating IPA..."
-          
-          # Check for .app in xcodebuild location
-          if [ -d "ios/build/Release-iphoneos/Runner.app" ]; then
-            echo "✅ Found .app from xcodebuild"
-            cd ios/build/Release-iphoneos
-          elif [ -d "build/ios/iphoneos/Runner.app" ]; then
-            echo "✅ Found .app from flutter build"
-            cd build/ios/iphoneos
-          else
-            echo "❌ No .app found, listing build directories:"
-            find . -name "*.app" -type d 2>/dev/null
-            exit 1
-          fi
+          flutter build ios --release --no-codesign
           
           # Create IPA
-          rm -rf Payload AltStore.ipa 2>/dev/null
+          cd build/ios/iphoneos
           mkdir Payload
-          cp -r Runner.app Payload/
-          zip -qr AltStore.ipa Payload
-          
-          echo "🎉 IPA created for AltStore!"
-          ls -lh AltStore.ipa
-          
-          # Copy to root
-          cp AltStore.ipa ../../final.ipa 2>/dev/null || cp AltStore.ipa ../final.ipa 2>/dev/null || true
+          mv Runner.app Payload/
+          zip -r OLED_Editor.ipa Payload
           
     artifacts:
-      - "final.ipa"
-      - "**/AltStore.ipa"
-      - "build.log"
-      - "ios/xcode_build.log"
+      - "build/ios/iphoneos/OLED_Editor.ipa"
