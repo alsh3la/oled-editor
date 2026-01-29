@@ -21,8 +21,7 @@ workflows:
           if grep -q "^platform :ios" Podfile; then
             sed -i.bak 's/^platform :ios.*/platform :ios, "13.0"/' Podfile
           else
-            sed -i.bak '1s/^/platform :ios, "13.0"\
-/' Podfile
+            sed -i.bak '1s/^/platform :ios, "13.0"/' Podfile
           fi
           
           # Install pods
