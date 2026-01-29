@@ -1,245 +1,173 @@
 workflows:
-  ios-altstore-debug:
-    name: DEBUG AltStore Build
+  ios-altstore-fixed-deployment:
+    name: Fix Deployment Target
     instance_type: mac_mini_m1
     environment:
-      groups:
-        - apple_certs  # Optional, create in Codemagic UI if you have certs
       flutter: stable
       xcode: latest
     scripts:
-      - name: DEBUG - Initial Setup
+      - name: Fix All Issues
         script: |
-          echo "🔍 DEBUG MODE STARTED"
-          echo "========================"
-          echo "📁 Current directory:"
-          pwd
-          ls -la
-          echo ""
-          echo "📱 iOS project status:"
-          if [ -d "ios" ]; then
-            echo "✅ iOS folder exists"
-            ls -la ios/
-          else
-            echo "❌ iOS folder missing"
-          fi
-          echo ""
-          echo "📄 pubspec.yaml (first 20 lines):"
-          head -20 pubspec.yaml
-          echo ""
+          echo "🔧 Fixing deployment target and other issues..."
           
-      - name: DEBUG - Fix Dependency
-        script: |
-          echo "🔧 DEBUG: Fixing dependency..."
-          echo "Before fix:"
-          grep -n "code_text_field" pubspec.yaml || echo "Not found"
+          # 1. Fix code_text_field dependency
+          sed -i '' 's/code_text_field: ^2.3.0/code_text_field: ^1.1.0/g' pubspec.yaml
           
-          # Backup
-          cp pubspec.yaml pubspec.yaml.original
+          # 2. Get packages
+          flutter pub get
           
-          # Try multiple fix methods
-          echo "Attempting fix method 1..."
-          sed -i.bak 's/code_text_field: ^2\.3\.0/code_text_field: ^1\.1\.0/' pubspec.yaml
+          # 3. FIX DEPLOYMENT TARGET IN PODFILE
+          echo "📝 Fixing Podfile deployment target..."
           
-          echo "After fix:"
-          grep -n "code_text_field" pubspec.yaml
-          
-          echo "Diff:"
-          diff -u pubspec.yaml.original pubspec.yaml | head -10 || true
-          
-      - name: DEBUG - Flutter Packages
-        script: |
-          echo "📦 DEBUG: Getting Flutter packages..."
-          echo "Running: flutter pub get"
-          flutter pub get 2>&1 | tee pub_get.log
-          PUB_EXIT_CODE=${PIPESTATUS[0]}
-          
-          echo ""
-          echo "📊 Package get result: Exit code $PUB_EXIT_CODE"
-          echo "Last 20 lines of output:"
-          tail -20 pub_get.log
-          
-          if [ $PUB_EXIT_CODE -ne 0 ]; then
-            echo "❌ ERROR: flutter pub get failed"
-            echo "Full error:"
-            grep -A5 -B5 "error\|Error\|ERROR" pub_get.log
-          else
-            echo "✅ flutter pub get successful"
-          fi
-          
-      - name: DEBUG - Check iOS Project
-        script: |
-          echo "📱 DEBUG: iOS Project Analysis"
-          echo "================================"
-          
+          # Ensure iOS folder exists
           if [ ! -d "ios" ]; then
-            echo "❌ iOS folder missing, creating..."
             flutter create . --platforms=ios --org com.example.oled
           fi
           
-          echo "📁 iOS structure:"
-          find ios -name "*.xcodeproj" -o -name "*.xcworkspace" -o -name "Podfile" -o -name "Info.plist" | sort
+          # Update Podfile with correct deployment target
+          cat > ios/Podfile << 'PODFILE'
+# Fix deployment target warnings
+platform :ios, '13.0'
+use_frameworks!
+install! 'cocoapods', :warn_for_unused_master_specs_repo => false
+
+# Override post_install to set deployment targets
+post_install do |installer|
+  installer.pods_project.targets.each do |target|
+    target.build_configurations.each do |config|
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      config.build_settings['CODE_SIGNING_ALLOWED'] = 'NO'
+      config.build_settings['CODE_SIGNING_REQUIRED'] = 'NO'
+    end
+  end
+end
+
+target 'Runner' do
+  use_frameworks!
+  
+  # Flutter Pods
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  
+  # Add any other pods here
+  
+end
+PODFILE
           
-          echo ""
-          echo "📄 Info.plist content:"
-          if [ -f "ios/Runner/Info.plist" ]; then
-            plutil -p ios/Runner/Info.plist | head -30
-          else
-            echo "⚠️ Info.plist not found"
-          fi
-          
-      - name: DEBUG - CocoaPods Installation
-        script: |
-          echo "☕️ DEBUG: CocoaPods..."
-          echo "Checking pod version:"
-          pod --version 2>/dev/null || echo "pod not in PATH"
-          
-          echo "Installing pods..."
+          # 4. FIX IOS PROJECT DEPLOYMENT TARGET
+          echo "⚙️ Fixing iOS project settings..."
           cd ios
-          pod install --repo-update 2>&1 | tee pod_install.log
-          POD_EXIT_CODE=${PIPESTATUS[0]}
+          
+          # Update Xcode project deployment target
+          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:IPHONEOS_DEPLOYMENT_TARGET 13.0" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          
+          # Disable signing
+          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:CODE_SIGN_STYLE Manual" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :objects:97C146ED1CF9000F007C117D:buildSettings:CODE_SIGN_IDENTITY ''" Runner.xcodeproj/project.pbxproj 2>/dev/null || true
+          
+          # Create xcconfig files
+          cat > Flutter/Release.xcconfig << 'XCCONFIG'
+#include "Generated.xcconfig"
+#include? "Pods-Runner.release.xcconfig"
+CODE_SIGN_IDENTITY=
+CODE_SIGNING_REQUIRED=NO
+CODE_SIGNING_ALLOWED=NO
+DEVELOPMENT_TEAM=
+PROVISIONING_PROFILE_SPECIFIER=
+IPHONEOS_DEPLOYMENT_TARGET=13.0
+XCCONFIG
+          
           cd ..
           
-          echo "Pod install exit code: $POD_EXIT_CODE"
-          echo "Last 30 lines of pod output:"
-          tail -30 ios/pod_install.log
-          
-      - name: DEBUG - Build Attempt
+      - name: Install Pods with Fix
         script: |
-          echo "🏗️ DEBUG: Building iOS..."
-          echo "Command: flutter build ios --release --no-codesign --verbose"
+          echo "☕️ Installing pods with fixed deployment target..."
+          cd ios
           
-          # Clean first
-          flutter clean 2>&1 | tail -10
+          # Clean pod cache
+          pod cache clean --all 2>/dev/null || true
+          rm -rf Pods Podfile.lock 2>/dev/null || true
           
-          # Build with full logging
-          flutter build ios --release --no-codesign --verbose 2>&1 | tee flutter_build.log
-          BUILD_EXIT_CODE=${PIPESTATUS[0]}
+          # Install pods
+          pod install --repo-update 2>&1 | tee pod_install.log | tail -50
           
-          echo ""
-          echo "📊 Build result: Exit code $BUILD_EXIT_CODE"
-          echo ""
-          echo "🔎 ERROR ANALYSIS:"
-          echo "=================="
+          cd ..
           
-          if [ $BUILD_EXIT_CODE -eq 0 ]; then
-            echo "✅ Build succeeded!"
-            echo "Looking for .app file..."
-            find . -name "Runner.app" -type d 2>/dev/null
+      - name: Build with Fixed Target
+        script: |
+          echo "🏗️ Building with fixed deployment target..."
+          
+          # Clean
+          flutter clean
+          
+          # Build
+          flutter build ios --release --no-codesign --verbose 2>&1 | tee build.log | tail -100
+          
+          # Check for specific error
+          if grep -q "BUILD FAILED" build.log; then
+            echo "❌ Build failed, trying xcodebuild directly..."
           else
-            echo "❌ Build failed with code $BUILD_EXIT_CODE"
-            echo ""
-            echo "📄 LAST 50 LINES OF BUILD LOG:"
-            echo "==============================="
-            tail -50 flutter_build.log
-            echo ""
-            echo "🔴 ERRORS FOUND:"
-            echo "================"
-            grep -i "error\|failed\|failed to\|could not\|unable to" flutter_build.log | head -20
-            echo ""
-            echo "⚠️ WARNINGS FOUND:"
-            echo "=================="
-            grep -i "warning" flutter_build.log | head -10
-            echo ""
-            echo "💡 POSSIBLE SOLUTIONS:"
-            echo "======================"
-            # Check for common errors
-            if grep -q "Development Team" flutter_build.log; then
-              echo "1. Need to set Development Team in Xcode"
-            fi
-            if grep -q "code sign" flutter_build.log; then
-              echo "2. Code signing issue - try different approach"
-            fi
-            if grep -q "Podfile" flutter_build.log; then
-              echo "3. CocoaPods issue - check pod install"
-            fi
+            echo "✅ Flutter build completed"
           fi
           
-      - name: DEBUG - Alternative Build Methods
+      - name: Direct xcodebuild with Fix
         script: |
-          echo "🔄 DEBUG: Trying alternative build methods..."
-          echo ""
-          
-          # Method 1: Direct xcodebuild
-          echo "Method 1: xcodebuild direct..."
+          echo "🔨 Building directly with xcodebuild..."
           cd ios
-          xcodebuild clean 2>&1 | tail -10
-          xcodebuild -workspace Runner.xcworkspace \
+          
+          # Clean
+          xcodebuild clean \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release 2>&1 | tail -10
+          
+          # Build with all fixes
+          xcodebuild build \
+            -workspace Runner.xcworkspace \
             -scheme Runner \
             -configuration Release \
-            CODE_SIGNING_ALLOWED=NO \
+            -destination 'generic/platform=iOS' \
             CODE_SIGN_IDENTITY="" \
-            DEVELOPMENT_TEAM="" 2>&1 | tee xcode_build.log | tail -30
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" \
+            PROVISIONING_PROFILE_SPECIFIER="" \
+            IPHONEOS_DEPLOYMENT_TARGET=13.0 \
+            ONLY_ACTIVE_ARCH=NO \
+            VALID_ARCHS="arm64 arm64e" 2>&1 | tee xcode_build.log | tail -100
+          
           cd ..
           
-          # Method 2: Build for simulator
-          echo ""
-          echo "Method 2: Simulator build..."
-          flutter build ios --simulator --release 2>&1 | tail -30
-          
-      - name: DEBUG - Find and Package
+      - name: Create IPA
         script: |
-          echo "📦 DEBUG: Looking for build outputs..."
-          echo ""
+          echo "📦 Creating IPA..."
           
-          # Search everywhere
-          echo "Searching for Runner.app:"
-          find . -name "Runner.app" -type d 2>/dev/null | while read app; do
-            echo "Found: $app"
-            echo "Size: $(du -sh "$app" | cut -f1)"
-            echo "Location: $(dirname "$app")"
-            echo ""
-          done
-          
-          # Try to package whatever we find
-          APP_PATHS=$(find . -name "Runner.app" -type d 2>/dev/null | head -1)
-          
-          if [ -n "$APP_PATHS" ]; then
-            echo "✅ Found .app, attempting to package..."
-            for APP_PATH in $APP_PATHS; do
-              BUILD_DIR=$(dirname "$APP_PATH")
-              IPA_NAME="OLED_Editor_$(basename "$BUILD_DIR").ipa"
-              
-              echo "Packaging from: $BUILD_DIR"
-              cd "$BUILD_DIR"
-              rm -rf Payload 2>/dev/null
-              mkdir Payload
-              cp -r Runner.app Payload/
-              zip -qr "$IPA_NAME" Payload
-              
-              echo "Created: $(pwd)/$IPA_NAME"
-              ls -lh "$IPA_NAME"
-              echo ""
-              
-              # Copy to root for artifacts
-              cp "$IPA_NAME" ../../ 2>/dev/null || true
-            done
+          # Check for .app in xcodebuild location
+          if [ -d "ios/build/Release-iphoneos/Runner.app" ]; then
+            echo "✅ Found .app from xcodebuild"
+            cd ios/build/Release-iphoneos
+          elif [ -d "build/ios/iphoneos/Runner.app" ]; then
+            echo "✅ Found .app from flutter build"
+            cd build/ios/iphoneos
           else
-            echo "❌ No Runner.app found anywhere!"
-            echo ""
-            echo "📁 Build directory contents:"
-            ls -la build/ 2>/dev/null || echo "No build directory"
-            echo ""
-            echo "📁 iOS build contents:"
-            ls -la ios/build/ 2>/dev/null || echo "No ios/build directory"
+            echo "❌ No .app found, listing build directories:"
+            find . -name "*.app" -type d 2>/dev/null
+            exit 1
           fi
           
+          # Create IPA
+          rm -rf Payload AltStore.ipa 2>/dev/null
+          mkdir Payload
+          cp -r Runner.app Payload/
+          zip -qr AltStore.ipa Payload
+          
+          echo "🎉 IPA created for AltStore!"
+          ls -lh AltStore.ipa
+          
+          # Copy to root
+          cp AltStore.ipa ../../final.ipa 2>/dev/null || cp AltStore.ipa ../final.ipa 2>/dev/null || true
+          
     artifacts:
-      - "*.ipa"
-      - "*.log"
-      - "ios/*.log"
-      - "pub_get.log"
-      - "flutter_build.log"
-      - "pubspec.yaml"
-      - "pubspec.yaml.original"
-      
-    publishing:
-      scripts:
-        - name: Summary
-          script: |
-            echo "📊 BUILD SUMMARY"
-            echo "================"
-            echo "Artifacts created:"
-            ls -la *.ipa *.log 2>/dev/null || echo "No artifacts"
-            echo ""
-            echo "If build failed, check the .log files above for errors."
+      - "final.ipa"
+      - "**/AltStore.ipa"
+      - "build.log"
+      - "ios/xcode_build.log"
