@@ -50,4 +50,4 @@ workflows:
           zip -r OLED_Editor.ipa Payload
 
     artifacts:
-      - "*.ipa"
+      - "*.ipa" 
