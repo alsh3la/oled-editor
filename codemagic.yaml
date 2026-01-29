@@ -1,53 +1,37 @@
 workflows:
-  ios-build:
-    name: Build OLED iOS
-    instance_type: mac_mini_m1
+  ios-unsigned:
+    name: Unsigned iOS Build (AltStore)
+    max_build_duration: 60
     environment:
       flutter: stable
       xcode: latest
+      cocoapods: default
     scripts:
-      - name: 🧹 Clean & Init
+      - name: Get Flutter packages
         script: |
-          set -e # STOP immediately if this step fails
-          rm -rf ios
-          rm -f pubspec.lock
-          flutter pub get
-          
-      - name: 🛠️ Generate iOS Project
-        script: |
-          set -e # STOP if generation fails
-          flutter config --enable-ios
-          flutter create . --platforms=ios
-          
-      - name: 🎨 Apply OLED Settings
-        script: |
-          set -e
-          PLIST="ios/Runner/Info.plist"
-          plutil -replace NSAppTransportSecurity -xml "<dict><key>NSAllowsArbitraryLoads</key><true/></dict>" $PLIST
-          plutil -replace UIStatusBarHidden -bool YES $PLIST
-          plutil -replace UIViewControllerBasedStatusBarAppearance -bool NO $PLIST
-          plutil -replace UIFileSharingEnabled -bool YES $PLIST
-          plutil -replace LSSupportsOpeningDocumentsInPlace -bool YES $PLIST
+          flutter packages pub get
 
-      - name: 📦 Install Pods
+      - name: Install CocoaPods
         script: |
-          set -e
-          cd ios
-          # Fix for some plugins needing higher deployment target
-          sed -i '' "s/# platform :ios, '12.0'/platform :ios, '13.0'/g" Podfile
-          pod install
-          cd ..
+          find . -name "Podfile" -exec dir dirname {} \; | xargs -n1 -I % sh -c 'cd %; pod install'
 
-      - name: 🚀 Build IPA
+      - name: Build Flutter App (No Signing)
         script: |
-          set -e # STOP if build fails
-          # Build unsigned release
+          # Build the .app bundle without asking for code signing identities
           flutter build ios --release --no-codesign
+
+      - name: Package .app into .ipa
+        script: |
+          # Go to the build output directory
+          cd build/ios/iphoneos
           
-          # Packaging
+          # Create the required "Payload" folder structure for an IPA
           mkdir Payload
-          mv build/ios/iphoneos/Runner.app Payload/
-          zip -r OLED_Editor.ipa Payload
+          mv Runner.app Payload
+          
+          # Zip it up into an IPA file
+          zip -r -9 runner.ipa Payload
 
     artifacts:
-      - "*.ipa" 
+      - build/ios/iphoneos/*.ipa  # Save the file we just zipped
+      - flutter_drive.log
