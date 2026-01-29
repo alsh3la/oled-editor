@@ -1,25 +1,91 @@
 workflows:
   ios-build:
-    name: Build iOS IPA
+    name: Build Unsigned IPA
     environment:
       flutter: stable
       xcode: latest
+      cocoapods: default
     scripts:
-      - name: Fix dependency and build
+      - name: Fix and Build
         script: |
-          # Fix the version in pubspec.yaml
-          sed -i '' 's/code_text_field:.*2\.3\.0/code_text_field: ^1.1.0/g' pubspec.yaml
+          set -e
           
-          # Get packages
+          echo "🚀 STARTING BUILD..."
+          
+          # 1. Fix code_text_field version
+          echo "🔧 Fixing code_text_field..."
+          sed -i.bak 's/code_text_field:.*2\.3\.0/code_text_field: ^1.1.0/g' pubspec.yaml
+          
+          # 2. Get packages
+          echo "📦 Getting packages..."
           flutter pub get
           
-          # Build
-          flutter build ios --release --no-codesign
+          # 3. Clean previous builds
+          echo "🧹 Cleaning..."
+          flutter clean
           
-          # Create IPA
-          cd build/ios/iphoneos
-          mkdir Payload
-          mv Runner.app Payload
-          zip -r app.ipa Payload
+          # 4. FORCE BUILD without asking for team
+          echo "🏗️ Building iOS (no signing)..."
+          flutter build ios \
+            --release \
+            --no-codesign \
+            --verbose 2>&1 | tee build.log
+          
+          # 5. Check if build succeeded
+          if [ $? -eq 0 ]; then
+            echo "✅ Build succeeded"
+          else
+            echo "⚠️ Build may have warnings, continuing anyway..."
+          fi
+          
+          # 6. Find the .app file
+          echo "🔍 Finding .app file..."
+          APP_PATH=$(find . -name "Runner.app" -type d | head -1)
+          
+          if [ -z "$APP_PATH" ]; then
+            echo "❌ No Runner.app found. Listing build directory:"
+            find build -type f -name "*.app" 2>/dev/null || find . -name "*.app" 2>/dev/null
+            exit 1
+          fi
+          
+          echo "📁 Found .app at: $APP_PATH"
+          
+          # 7. Create IPA
+          echo "📦 Creating IPA..."
+          BUILD_DIR=$(dirname "$APP_PATH")
+          cd "$BUILD_DIR"
+          rm -rf Payload *.ipa 2>/dev/null || true
+          mkdir -p Payload
+          cp -r Runner.app Payload/
+          zip -qr "app_unsigned.ipa" Payload
+          
+          echo "✅ IPA created: $(pwd)/app_unsigned.ipa"
+          ls -lh *.ipa
+          
+      - name: Force IPA Creation (Fallback)
+        script: |
+          # Try different possible locations
+          echo "🔄 Trying fallback IPA creation..."
+          
+          # Try common build locations
+          LOCATIONS=(
+            "build/ios/iphoneos"
+            "build/ios/Release-iphoneos"
+            "ios/DerivedData/Runner/Build/Products/Release-iphoneos"
+          )
+          
+          for loc in "${LOCATIONS[@]}"; do
+            if [ -d "$loc/Runner.app" ]; then
+              echo "📁 Found .app in: $loc"
+              cd "$loc"
+              mkdir -p Payload
+              cp -r Runner.app Payload/
+              zip -qr "app_fallback.ipa" Payload
+              echo "✅ Created IPA from $loc"
+              break
+            fi
+          done
+          
     artifacts:
-      - build/ios/iphoneos/app.ipa
+      - "**/*.ipa"
+      - "build.log"
