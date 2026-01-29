@@ -6,35 +6,72 @@ workflows:
       flutter: stable
       xcode: latest
     scripts:
-      # ADD THIS SINGLE FIX AT THE BEGINNING
-      - name: Fix code_text_field
+      # STEP 1: FIX DEPENDENCY (ONLY THIS)
+      - name: Fix Dependency
         script: |
-          echo "Fixing broken dependency..."
-          sed -i '' 's/code_text_field: ^2.3.0/code_text_field: ^1.1.0/g' pubspec.yaml
+          echo "🔧 Fixing code_text_field from 2.3.0 to 1.1.0..."
+          sed -i '' 's/code_text_field: ^2\.3\.0/code_text_field: ^1\.1\.0/g' pubspec.yaml
           
-      # KEEP EVERYTHING ELSE EXACTLY AS YOUR OLD WORKING CODE
-      - name: Generate Project
+      # STEP 2: GET PACKAGES
+      - name: Get Packages
         script: |
-          flutter config --enable-ios
-          flutter create . --platforms=ios
-      - name: Configure OLED Settings
+          echo "📦 Getting dependencies..."
+          flutter pub get
+          
+      # STEP 3: BUILD DIRECTLY - NO FLUTTER CREATE!
+      - name: Build iOS App
         script: |
-          PLIST="ios/Runner/Info.plist"
-          plutil -replace NSAppTransportSecurity -xml "<dict><key>NSAllowsArbitraryLoads</key><true/></dict>" $PLIST
-          plutil -replace UIStatusBarHidden -bool YES $PLIST
-          plutil -replace UIViewControllerBasedStatusBarAppearance -bool NO $PLIST
-          plutil -replace UIFileSharingEnabled -bool YES $PLIST
-          plutil -replace LSSupportsOpeningDocumentsInPlace -bool YES $PLIST
-      - name: Install Pods
+          echo "🏗️ Building YOUR app (not creating new)..."
+          
+          # Clean previous builds but keep iOS project
+          flutter clean
+          
+          # Build without generating new project
+          flutter build ios --release --no-codesign --verbose 2>&1 | tee build.log
+          
+          # Check if successful
+          if [ $? -eq 0 ]; then
+            echo "✅ Build completed"
+          else
+            echo "⚠️ Build may have warnings, checking for .app anyway..."
+          fi
+          
+      # STEP 4: VERIFY .APP WAS CREATED
+      - name: Check Build Output
         script: |
-          cd ios
-          pod install
-          cd ..
-      - name: Build IPA
+          echo "🔍 Checking build results..."
+          
+          if [ -d "build/ios/iphoneos/Runner.app" ]; then
+            APP_SIZE=$(du -sh build/ios/iphoneos/Runner.app | cut -f1)
+            echo "✅ Runner.app created: $APP_SIZE"
+            echo "📁 Contents:"
+            find build/ios/iphoneos/Runner.app -type f | head -10
+          else
+            echo "❌ ERROR: No Runner.app found!"
+            echo "📄 Build log (last 50 lines):"
+            tail -50 build.log
+            echo "🔍 Searching for any build output:"
+            find build -type f -name "*.app" 2>/dev/null
+            exit 1
+          fi
+          
+      # STEP 5: CREATE IPA
+      - name: Create IPA
         script: |
-          flutter build ios --release --no-codesign
+          echo "📦 Creating IPA..."
+          
+          # Clean previous artifacts
+          rm -rf Payload OLED_Editor.ipa 2>/dev/null || true
+          
+          # Create IPA
           mkdir Payload
-          mv build/ios/iphoneos/Runner.app Payload/
+          cp -r build/ios/iphoneos/Runner.app Payload/
           zip -r OLED_Editor.ipa Payload
+          
+          # Verify IPA
+          IPA_SIZE=$(du -h OLED_Editor.ipa | cut -f1)
+          echo "✅ IPA created: OLED_Editor.ipa ($IPA_SIZE)"
+          
     artifacts:
       - "OLED_Editor.ipa"
+      - "build.log"
